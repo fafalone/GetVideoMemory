@@ -1,0 +1,75 @@
+[Description("")]
+[FormDesignerId("968B9AED-A203-486C-9044-E6B05623CE06")]
+[PredeclaredId]
+Class Form1
+
+Public Sub AppendLog(smsg As String)
+Text1.Text = Text1.Text & smsg & vbCrLf
+SendMessage Text1.hWnd, EM_SCROLL, SB_BOTTOM, ByVal 0&
+End Sub
+
+'Roughly based on code from Pavel Yosifovich's DeviceExplorer
+Private Sub DisplayVideoMem()
+    On Error Resume Next
+    Dim pFactory As IDXGIFactory
+    Dim pAdapters As D3DKMT_ENUMADAPTERS
+    Dim adapter As IDXGIAdapter
+    Dim desc As DXGI_ADAPTER_DESC
+    Dim status As NTSTATUS
+    Dim sDesc As String
+    Dim segInfo As D3DKMT_SEGMENTSIZEINFO
+    Dim n As Long
+    Dim hr As Long = CreateDXGIFactory(IID_IDXGIFactory, pFactory)
+    If SUCCEEDED(hr) Then
+        status = D3DKMTEnumAdapters(pAdapters)
+        For i As Long = 0 To pAdapters.NumAdapters - 1
+            n = -1
+            pFactory.EnumAdapters(i, adapter)
+            If SUCCEEDED(Err.LastHresult) Then
+                adapter.GetDesc(desc)
+            End If
+            For j As Long = 0 To pAdapters.NumAdapters - 1
+                If CompareMemory(desc.AdapterLuid, pAdapters.Adapters(j).AdapterLuid, LenB(Of LUID)) = LenB(Of LUID) Then
+                    n = j
+                    Exit For
+                End If
+            Next
+            If n >= 0 Then
+                sDesc = WCHARtoSTR(desc.Description)
+                If QueryAdapterInfo(pAdapters.Adapters(n).hAdapter, KMTQAITYPE_GETSEGMENTSIZE, segInfo) = STATUS_SUCCESS Then
+                    AppendLog If(i = 0, "*", "") & "Adapter " & CStr(i + 1) & " (id=" & desc.deviceId & "): " & sDesc & ", " & segInfo.DedicatedVideoMemorySize & " bytes"
+                End If
+            End If
+            Set adapter = Nothing
+            ZeroMemory desc, LenB(desc)
+            ZeroMemory segInfo, LenB(segInfo)
+            sDesc = ""
+        Next
+    End If
+End Sub
+
+Private Function QueryAdapterInfo(Of T)(ByVal hAdapter As Long, ByVal type As KMTQUERYADAPTERINFOTYPE, data As T) As Long
+    Dim queryInfo As D3DKMT_QUERYADAPTERINFO
+    queryInfo.hAdapter = hAdapter
+    queryInfo.Type = type
+    queryInfo.pPrivateDriverData = VarPtr(data)
+    queryInfo.PrivateDriverDataSize = LenB(data)
+    Dim status As Long = D3DKMTQueryAdapterInfo(queryInfo)
+    Return status
+End Function
+
+Private Function WCHARtoSTR(aCh() As Integer) As String
+Dim i As Long
+Dim sz As String
+For i = LBound(aCh) To UBound(aCh)
+    If aCh(i) <> 0 Then
+        sz = sz & ChrW$(CLng(aCh(i)))
+    End If
+Next
+WCHARtoSTR = sz
+End Function
+
+Private Sub Form_Load() Handles Form.Load
+    DisplayVideoMem
+End Sub
+End Class
